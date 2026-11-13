@@ -1,0 +1,107 @@
+version: '3.8'
+
+networks:
+  beast3-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+
+services:
+  # Shared PostgreSQL Database Instance for Federated Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: beast3_postgres
+    environment:
+      POSTGRES_USER: beast_admin
+      POSTGRES_PASSWORD: secure_password_change_me
+      POSTGRES_DB: beast3_master
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - beast3-network
+
+  # 1. Multi-Tenant Federation & Sub-DAO Routing Engine
+  federated-router:
+    build:
+      context: ../beast3-federated-router
+      dockerfile: Dockerfile
+    container_name: beast3_federated_router
+    ports:
+      - "8083:8083"
+    environment:
+      - PORT=8083
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://beast_admin:secure_password_change_me@postgres:5432/beast3_master?schema=federation
+    depends_on:
+      - postgres
+    networks:
+      - beast3-network
+
+  # 2. Automated Event-Driven Civic Aid & Compliance Dispatcher
+  civic-dispatcher:
+    build:
+      context: ../eventarc-civic-dispatcher
+      dockerfile: Dockerfile
+    container_name: beast3_civic_dispatcher
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - FIREBASE_PROJECT_ID=beast3-local
+      - FIRESTORE_COLLECTION=beast3_audit_logs
+    networks:
+      - beast3-network
+
+  # 3. Gasless EIP-712 Relayer Bridge
+  gasless-relayer:
+    build:
+      context: ../beast3-gasless-relayer-bridge
+      dockerfile: Dockerfile
+    container_name: beast3_gasless_relayer
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - HOST=0.0.0.0
+      - RPC_URL=https://rpc.ankr.com/eth_sepolia
+      - RELAYER_PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000000
+      - CONTRACT_ADDRESS=0x000000000000000000000000000000000000000
+    networks:
+      - beast3-network
+
+  # 4. Zero-Knowledge Resident Verification Module
+  zk-verifier:
+    build:
+      context: ../beast3-zk-verifier
+      dockerfile: Dockerfile
+    container_name: beast3_zk_verifier
+    ports:
+      - "8082:8082"
+    environment:
+      - PORT=8082
+      - HOST=0.0.0.0
+      - CIRCUIT_NAME=residency_eligibility
+    networks:
+      - beast3-network
+
+  # 5. FSSA Benefits Auto-Apply Module
+  fssa-auto-apply:
+    build:
+      context: ../fssa-auto-apply
+      dockerfile: Dockerfile
+    container_name: beast3_fssa_auto_apply
+    ports:
+      - "8084:8084"
+    environment:
+      - PORT=8084
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://beast_admin:secure_password_change_me@postgres:5432/beast3_master?schema=fssa
+    depends_on:
+      - postgres
+    networks:
+      - beast3-network
